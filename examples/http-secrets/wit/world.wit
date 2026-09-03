@@ -1,0 +1,20 @@
+package wasmcloud:http-secrets;
+
+/// Reads secrets through `wasmcloud:secrets` and serves them over HTTP, so a
+/// deployment can confirm that what it bound (a Kubernetes `Secret` named by
+/// `secretFrom`, or a `wash dev` config entry) is what the component receives.
+///
+/// Both ways a component can ask for a secret are here:
+///
+/// - `store` + `reveal`: dynamic, keyed by a runtime string. A key the bind
+///   did not carry is only discovered when `store.get` returns `not-found`.
+/// - `api-key`, a labeled `secret` import: the label itself names the secret,
+///   so the host checks it resolves before instantiating the component — a
+///   missing `api-key` config entry fails the bind, not a request.
+world http-secrets {
+  import wasmcloud:secrets/store@2.1.0;
+  import wasmcloud:secrets/reveal@2.1.0;
+  import api-key: wasmcloud:secrets/secret@2.1.0;
+
+  export wasi:http/handler@0.3.0;
+}

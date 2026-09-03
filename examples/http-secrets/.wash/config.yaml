@@ -1,0 +1,30 @@
+version: 2.0.0
+
+build:
+  # `wasmcloud:secrets` is async throughout, so this is a WASI P3 component.
+  # The target is `wasip2`: it emits a component directly, and the P2 platform
+  # imports it carries are orthogonal to the async lifting of the secrets calls.
+  command: cargo build --target wasm32-wasip2 --release --locked
+  component_path: target/wasm32-wasip2/release/http_secrets.wasm
+
+dev:
+  # What a Kubernetes `Secret` referenced by `secretFrom` supplies on a
+  # cluster, supplied inline here so the project runs on its own. The built-in
+  # `wasmcloud:secrets` plugin serves these as bind-time config; they never
+  # touch a file the component can read.
+  host_interfaces:
+    # The plain `store`/`reveal` import: every key here answers `store.get`.
+    - namespace: wasmcloud
+      package: secrets
+      interfaces: [store, reveal]
+      config:
+        username: dev-user
+        password: dev-password
+    # The labeled `api-key` import routes here by `name`. The label is the
+    # config key: a missing `api-key` entry fails the bind, not the request.
+    - namespace: wasmcloud
+      package: secrets
+      interfaces: [secret]
+      name: api-key
+      config:
+        api-key: dev-api-key
