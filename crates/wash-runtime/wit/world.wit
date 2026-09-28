@@ -70,6 +70,22 @@ world async-messaging {
 }
 
 
+world spi {
+    import wasi:spi/spi@0.2.0-draft;
+}
+
+world wpf-hardware {
+    import wpf:hardware/controller@0.2.0;
+}
+
+world wpf-core-events {
+    import wpf:core/events@0.1.0;
+}
+
+world wpf-config-includes {
+    import wpf:config-loader/includes;
+}
+
 world otel {
     import wasi:otel/types@0.2.0-rc.2;
     import wasi:otel/tracing@0.2.0-rc.2;

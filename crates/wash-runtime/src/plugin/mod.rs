@@ -22,6 +22,10 @@
 //! - [`wasi_logging`] - Structured logging (`wasi:logging`)
 //! - [`wasi_otel`] - OpenTelemetry tracing, metrics, and logs (`wasi:otel/*`)
 //! - [`wasmcloud_secrets`] - Secrets delivery from bind-time config (`wasmcloud:secrets`)
+//! - [`wasi_spi`] - SPI bus access for host-attached peripherals (`wasi:spi`)
+//! - [`wpf_hardware`] - Pinball coil/switch control via a P3-ROC (`wpf:hardware`)
+//! - [`wpf_core_events`] - Pinball cross-component event bus over NATS (`wpf:core/events`)
+//! - [`wpf_config_includes`] - Pinball machine-config file access (`wpf:config-loader/includes`)
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -52,6 +56,18 @@ pub mod wasmcloud_postgres;
 
 #[cfg(feature = "wasi-otel")]
 pub mod wasi_otel;
+
+#[cfg(feature = "wasi-spi")]
+pub mod wasi_spi;
+
+#[cfg(all(feature = "wpf-hardware", target_os = "linux"))]
+pub mod wpf_hardware;
+
+#[cfg(feature = "wpf-core-events")]
+pub mod wpf_core_events;
+
+#[cfg(feature = "wpf-config-includes")]
+pub mod wpf_config_includes;
 
 pub mod wasmcloud_messaging;
 

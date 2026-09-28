@@ -59,6 +59,18 @@ wasmcloud-postgres = [
     "dep:ulid",
 ]
 wasi-tls = ["dep:wasmtime-wasi-tls"]
+# SPI bus access (`wasi:spi`). The `VirtualSpi` backend works everywhere;
+# the `PhysicalSpi` spidev backend compiles on Linux only.
+wasi-spi = ["dep:spidev"]
+# Pinball hardware (`wpf:hardware/controller`) — Multimorphic P3-ROC over
+# FTDI USB. Uses a vendored libusb, so no system packages are required.
+wpf-hardware = ["dep:rusb"]
+# Pinball event bus (`wpf:core/events`) — publishes each posted event as one
+# JSON message on the host's data NATS connection. Pure NATS, no native deps.
+wpf-core-events = []
+# Pinball machine-config file access (`wpf:config-loader/includes`) — serves
+# reads out of an operator-configured machine root, one root per workload.
+wpf-config-includes = []
 
 [dependencies]
 anyhow = { workspace = true }
@@ -164,6 +176,15 @@ webpki-roots = { workspace = true }
 # `#[cfg]` on `plugin::wasi_webgpu`.
 [target.'cfg(all(not(target_os = "windows"), not(target_arch = "s390x")))'.dependencies]
 wasi-webgpu-wasmtime = { version = "0.3", optional = true }
+
+# SPI dependencies (optional, behind 'wasi-spi' feature). The kernel spidev
+# interface is Linux-only, matching the `#[cfg]` on `plugin::wasi_spi::physical`.
+[target.'cfg(target_os = "linux")'.dependencies]
+spidev = { workspace = true, optional = true }
+
+# P3-ROC dependencies (optional, behind 'wpf-hardware' feature). rusb bundles
+# a vendored libusb-1.0, so the plugin builds anywhere USB is meaningful.
+rusb = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }

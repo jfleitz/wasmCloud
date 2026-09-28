@@ -339,6 +339,56 @@ impl CliCommand for DevCommand {
             debug!("WASI KeyValue plugin registered with in-memory backend");
         }
 
+        // Add wasi:spi plugin — spidev-backed hardware access on Linux
+        // (devices declared via `wasi:spi` interface config in the workload
+        // manifest), frame-capturing virtual backend elsewhere.
+        #[cfg(all(feature = "wasi-spi", target_os = "linux"))]
+        {
+            host_builder = host_builder
+                .with_plugin(Arc::new(plugin::wasi_spi::PhysicalSpi::builder().build()))?;
+            debug!("WASI SPI plugin registered with spidev backend");
+        }
+        #[cfg(all(feature = "wasi-spi", not(target_os = "linux")))]
+        {
+            host_builder =
+                host_builder.with_plugin(Arc::new(plugin::wasi_spi::VirtualSpi::default()))?;
+            debug!("WASI SPI plugin registered with virtual backend");
+        }
+
+        // Add wpf:hardware plugin — Multimorphic P3-ROC pinball controller
+        // over FTDI USB (settings via `wpf:hardware` interface config; the
+        // device is opened lazily when a workload binds the interface).
+        #[cfg(all(feature = "wpf-hardware", target_os = "linux"))]
+        {
+            host_builder = host_builder
+                .with_plugin(Arc::new(plugin::wpf_hardware::P3Roc::builder().build()))?;
+            debug!("wpf:hardware plugin registered with P3-ROC backend");
+        }
+
+        // Add wpf:core/events plugin — the wasm-pinball-framework's cross-
+        // component event bus. NATS-only: it publishes on the dev session's
+        // data NATS connection, so without `dev.data_nats_url` it is skipped
+        // (there is no in-memory backend to fall back to).
+        #[cfg(feature = "wpf-core-events")]
+        if let Some(client) = &data_nats_client {
+            host_builder = host_builder.with_plugin(Arc::new(
+                plugin::wpf_core_events::CoreEvents::new(client.clone()),
+            ))?;
+            debug!("wpf:core/events plugin registered with NATS backend (data_nats_url)");
+        } else {
+            debug!("wpf:core/events plugin skipped: no dev.data_nats_url configured");
+        }
+
+        // Add wpf:config-loader/includes plugin — machine-config file access
+        // rooted at the machine folder from the workload's interface config.
+        #[cfg(feature = "wpf-config-includes")]
+        {
+            host_builder = host_builder.with_plugin(Arc::new(
+                plugin::wpf_config_includes::ConfigIncludes::default(),
+            ))?;
+            debug!("wpf:config-loader/includes plugin registered");
+        }
+
         #[cfg(feature = "wasm_component_model_implements")]
         {
             host_builder = host_builder.with_multiplexed_plugins()?;

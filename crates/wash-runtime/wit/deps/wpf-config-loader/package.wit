@@ -1,0 +1,50 @@
+// wpf:config-loader — the machine-config seam of the wasm-pinball-framework.
+// Mirror of the config-loader component's package in the wpf repo
+// (interfaces only; worlds live with consumers). The host implements
+// `includes` (file access under an operator-configured machine root); the
+// `loader` interface is exported by wpf's config-loader component and is
+// mirrored here so this package stays a faithful copy.
+package wpf:config-loader;
+
+/// Loader interface used at machine boot: MPF-style YAML buffers in, a
+/// canonical MachineConfig (JSON-encoded) out. The caller resolves files;
+/// the loader only does merge + validate.
+interface loader {
+    record machine-config-blob {
+        json: list<u8>,
+    }
+
+    variant load-error {
+        parse(string),
+        validate(string),
+        io(string),
+        include-not-found(string),
+        include-loop(string),
+    }
+
+    record source-layer {
+        /// A short identifier used in error messages — typically the file path.
+        label: string,
+        yaml: list<u8>,
+    }
+
+    load-yaml: func(yaml: list<u8>) -> result<machine-config-blob, load-error>;
+
+    load-layered: func(layers: list<source-layer>) -> result<machine-config-blob, load-error>;
+}
+
+/// Filesystem callback. The loader (and the boot driver) import this; the
+/// host exports it, rooted at the machine folder. Paths resolve relative to
+/// the directory of the file named by `base-label`, matching MPF's
+/// `!include` scoping.
+interface includes {
+    variant include-error {
+        not-found(string),
+        io(string),
+    }
+
+    /// Resolve a path relative to a layer's label. The implementation enforces
+    /// the same scoping MPF Python does: `!include foo.yaml` is relative to
+    /// the directory of the YAML containing the include.
+    fetch: func(base-label: string, relative-path: string) -> result<list<u8>, include-error>;
+}

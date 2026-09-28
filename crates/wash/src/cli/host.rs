@@ -1057,6 +1057,54 @@ impl CliCommand for HostCommand {
             cluster_host_builder = cluster_host_builder.with_http_handler(Arc::new(ingress));
         }
 
+        // Enable wasi:spi — spidev-backed hardware access on Linux (devices
+        // are declared via `wasi:spi` interface config in the workload
+        // manifest), frame-capturing virtual backend elsewhere.
+        #[cfg(all(feature = "wasi-spi", target_os = "linux"))]
+        {
+            cluster_host_builder = cluster_host_builder
+                .with_plugin(Arc::new(plugin::wasi_spi::PhysicalSpi::builder().build()))?;
+        }
+        #[cfg(all(feature = "wasi-spi", not(target_os = "linux")))]
+        {
+            cluster_host_builder = cluster_host_builder
+                .with_plugin(Arc::new(plugin::wasi_spi::VirtualSpi::default()))?;
+        }
+
+        // Enable wpf:hardware/controller — Multimorphic P3-ROC pinball
+        // controller over FTDI USB. Device settings (serial, switch-count,
+        // watchdog-ms, pwm-period-ms) come from `wpf:hardware` interface
+        // config in the workload manifest; the USB device is only opened when
+        // a workload actually binds the interface.
+        #[cfg(all(feature = "wpf-hardware", target_os = "linux"))]
+        {
+            cluster_host_builder = cluster_host_builder
+                .with_plugin(Arc::new(plugin::wpf_hardware::P3Roc::builder().build()))?;
+        }
+
+        // Enable wpf:core/events — the wasm-pinball-framework's cross-
+        // component event bus. `events.post` publishes each event as one JSON
+        // message on `<subject-prefix>.<event-name>` (default prefix
+        // `wpf.events`, override via `wpf:core` interface config) over the
+        // host's data NATS connection.
+        #[cfg(feature = "wpf-core-events")]
+        {
+            cluster_host_builder = cluster_host_builder.with_plugin(Arc::new(
+                plugin::wpf_core_events::CoreEvents::new(data_nats_client.clone()),
+            ))?;
+        }
+
+        // Enable wpf:config-loader/includes — machine-config file access for
+        // the wasm-pinball-framework, rooted at the machine folder each
+        // workload names in its `wpf:config-loader` interface config
+        // (`root: /path/to/machine`).
+        #[cfg(feature = "wpf-config-includes")]
+        {
+            cluster_host_builder = cluster_host_builder.with_plugin(Arc::new(
+                plugin::wpf_config_includes::ConfigIncludes::default(),
+            ))?;
+        }
+
         // Enable otel plugin
         if self.wasi_otel {
             cluster_host_builder = cluster_host_builder

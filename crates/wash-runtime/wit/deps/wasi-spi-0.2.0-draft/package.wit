@@ -1,0 +1,43 @@
+// Hand-vendored draft package (not fetched from a registry — see wkg.lock for
+// the fetched packages). Modeled on the WASI embedded `wasi-spi` proposal and
+// Rust's `embedded-hal` `SpiDevice` contract.
+package wasi:spi@0.2.0-draft;
+
+/// Half- and full-duplex access to SPI peripherals attached to the host,
+/// for example APA102/SK9822 addressable LED strips on a Raspberry Pi.
+interface spi {
+    /// Errors surfaced by SPI operations.
+    variant error {
+        /// The requested logical device is not configured on the host.
+        no-such-device,
+        /// The operation was rejected before reaching the bus, e.g. the
+        /// transfer exceeds the host's maximum transfer size.
+        invalid-argument(string),
+        /// Opening or driving the bus failed at the OS/driver level.
+        io(string),
+        /// Any other backend-specific failure.
+        other(string),
+    }
+
+    /// An opened SPI device. Concurrent operations on the same device are
+    /// serialized by the host; a single operation is one chip-select
+    /// assertion.
+    resource device {
+        /// Clock out `data` on MOSI, discarding anything received
+        /// (half-duplex write). This is the hot path for write-only
+        /// peripherals such as APA102 LED strips.
+        write: func(data: list<u8>) -> result<_, error>;
+
+        /// Clock in `len` bytes from MISO, sending zeros (half-duplex read).
+        read: func(len: u32) -> result<list<u8>, error>;
+
+        /// Full-duplex transfer: write `data` while simultaneously reading
+        /// the same number of bytes.
+        transfer: func(data: list<u8>) -> result<list<u8>, error>;
+    }
+
+    /// Open a logical SPI device by name. Names are mapped to concrete
+    /// buses, chip-selects, and clock settings by host configuration —
+    /// components never see device paths.
+    open: func(name: string) -> result<device, error>;
+}

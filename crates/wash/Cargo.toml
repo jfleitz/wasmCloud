@@ -14,6 +14,23 @@ version.workspace = true
 [features]
 default = ["wasi-webgpu", "wasm_component_model_implements"]
 wasi-tls = ["wash-runtime/wasi-tls"]
+# SPI bus access (`wasi:spi`) for host-attached peripherals such as APA102
+# LED strips. `wash host`/`wash dev` register the spidev-backed plugin on
+# Linux and the frame-capturing virtual backend elsewhere.
+wasi-spi = ["wash-runtime/wasi-spi"]
+# Pinball coil/switch control (`wpf:hardware/controller`) via a Multimorphic
+# P3-ROC over USB. `wash host`/`wash dev` register the plugin on Linux. Build
+# this on the machine physically attached to the P3-ROC (and build the LED
+# Pi's host with `wasi-spi` instead — the plugins are independent features).
+wpf-hardware = ["wash-runtime/wpf-hardware", "wpf-core-events", "wpf-config-includes"]
+# Pinball cross-component event bus (`wpf:core/events`) over the host's data
+# NATS connection. Enabled automatically with `wpf-hardware` (the game-logic
+# host needs both); enable it alone for hosts that only relay events.
+wpf-core-events = ["wash-runtime/wpf-core-events"]
+# Pinball machine-config file access (`wpf:config-loader/includes`), rooted at
+# the machine folder named in the workload manifest. Enabled automatically
+# with `wpf-hardware` (the game-logic host loads the machine config).
+wpf-config-includes = ["wash-runtime/wpf-config-includes"]
 # Route component-model `(implements ..)` named imports to per-import backends.
 # On by default: `wash host`/`wash dev` register the multiplexed keyvalue plugin
 # (the unnamed/default import keeps its standalone backend, so normal workloads

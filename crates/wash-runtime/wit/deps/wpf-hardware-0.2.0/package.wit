@@ -1,0 +1,120 @@
+// 0.2.0, sync/poll revision. The original 0.2.0 used wasip3 `async func`
+// commands and a `stream<fast-event>` event path; in practice a sync-lifted
+// export cannot drive an async-lowered import (wasmtime traps with "cannot
+// enter component instance"), and every wpf:core interface is sync — which is
+// also what keeps sibling calls on the runtime's shared-store path (async
+// plain-value calls run in ephemeral stores and would lose component state).
+// So the hardware seam is synchronous: commands block for the µs–ms the
+// backend needs, and inbound events are pulled with `poll-events` from a
+// host-side buffer — the game driver's ~10 ms tick is the pump. Firmware
+// autofire rules still cover the latency-critical reflexes.
+//
+// The light path lives in its own `lights` interface (not `controller`) so a
+// deployment can bind LEDs to a different backend/host than coils & switches —
+// e.g. a P-ROC/P3-ROC driving coils & switches on the NUC while an APA102 strip
+// is driven over SPI from a Raspberry Pi. A backend MAY export both interfaces
+// (the virtual simulator does); nothing requires them to co-locate.
+package wpf:hardware@0.2.0;
+
+/// Outbound commands to whichever coil/switch backend is bound — real FAST
+/// controller, virtual-hardware simulator, or the P-ROC/P3-ROC backend.
+/// Exported by the host plugin (or the virtual-hardware component); imported
+/// by `device-manager`.
+interface controller {
+    variant fast-error {
+        not-connected,
+        timeout,
+        protocol(string),
+        io(string),
+    }
+
+    record switch-event {
+        switch-id: u8,
+        closed: bool,
+        timestamp-us: u64,
+    }
+
+    /// Inbound hardware events. Coil acks are not a variant case — they fold
+    /// into the return of `pulse-coil` / `hold-coil`.
+    variant fast-event {
+        switch(switch-event),
+        watchdog-reset,
+        link-down,
+        link-up,
+    }
+
+    /// Pulse a coil for `duration-ms`. Returns when the backend acks.
+    pulse-coil: func(coil-id: u8, duration-ms: u16) -> result<_, fast-error>;
+
+    /// Set a coil to held (with PWM) until released.
+    hold-coil: func(coil-id: u8, pwm: u8) -> result<_, fast-error>;
+
+    release-coil: func(coil-id: u8) -> result<_, fast-error>;
+
+    /// Configure an autofire rule on the controller (slingshots, pop bumpers,
+    /// flipper-fire). On real hardware this becomes a firmware-resident rule.
+    configure-autofire: func(
+        switch-id: u8,
+        coil-id: u8,
+        pulse-ms: u16,
+        cooldown-ms: u16,
+    ) -> result<_, fast-error>;
+
+    /// Read current state of all switches as a bitmap.
+    read-switch-state: func() -> result<list<u8>, fast-error>;
+
+    /// Escape hatch — diagnostics only.
+    send-raw: func(payload: list<u8>) -> result<list<u8>, fast-error>;
+
+    /// Pull up to `max-events` buffered hardware events. The backend keeps a
+    /// bounded per-consumer buffer from the moment of the first poll; if the
+    /// consumer falls behind and the buffer overflows, oldest events are
+    /// dropped and the consumer re-syncs via `read-switch-state`. Poll from
+    /// the game loop (~10 ms) — reflexes live in firmware autofire rules, so
+    /// tick-rate delivery is fast enough for game logic.
+    poll-events: func(max-events: u32) -> result<list<fast-event>, fast-error>;
+}
+
+/// Addressable-LED control, split out of `controller` so lights can bind to a
+/// different backend/host. Exported by the LED backend (APA102-over-SPI on a
+/// Pi, the P-ROC LED path, or the virtual simulator); imported by
+/// `device-manager`.
+interface lights {
+    variant light-error {
+        not-connected,
+        invalid-argument(string),
+        io(string),
+    }
+
+    record light-update {
+        light-id: u16,
+        rgb: tuple<u8, u8, u8>,
+    }
+
+    /// Set a single addressable LED.
+    set-light: func(light-id: u16, rgb: tuple<u8, u8, u8>) -> result<_, light-error>;
+
+    /// Set a batch of LEDs as one frame. This is the hot path: a show frame
+    /// maps to exactly one call, which collapses to a single strip write (and,
+    /// across a lattice link, a single round trip). LEDs not named in `frame`
+    /// keep their current value.
+    set-lights: func(frame: list<light-update>) -> result<_, light-error>;
+}
+
+/// Coil/switch backend (FAST, P-ROC/P3-ROC, virtual).
+world hardware-backend {
+    export controller;
+}
+
+world hardware-consumer {
+    import controller;
+}
+
+/// Addressable-LED backend (APA102-over-SPI, P-ROC LED path, virtual).
+world light-backend {
+    export lights;
+}
+
+world light-consumer {
+    import lights;
+}
