@@ -78,10 +78,6 @@ world wpf-hardware {
     import wpf:hardware/controller@0.2.0;
 }
 
-world wpf-core-events {
-    import wpf:core/events@0.1.0;
-}
-
 world wpf-config-includes {
     import wpf:config-loader/includes;
 }

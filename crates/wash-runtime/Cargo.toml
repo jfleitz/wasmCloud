@@ -65,9 +65,6 @@ wasi-spi = ["dep:spidev"]
 # Pinball hardware (`wpf:hardware/controller`) — Multimorphic P3-ROC over
 # FTDI USB. Uses a vendored libusb, so no system packages are required.
 wpf-hardware = ["dep:rusb"]
-# Pinball event bus (`wpf:core/events`) — publishes each posted event as one
-# JSON message on the host's data NATS connection. Pure NATS, no native deps.
-wpf-core-events = []
 # Pinball machine-config file access (`wpf:config-loader/includes`) — serves
 # reads out of an operator-configured machine root, one root per workload.
 wpf-config-includes = []

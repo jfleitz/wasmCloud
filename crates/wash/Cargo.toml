@@ -22,11 +22,11 @@ wasi-spi = ["wash-runtime/wasi-spi"]
 # P3-ROC over USB. `wash host`/`wash dev` register the plugin on Linux. Build
 # this on the machine physically attached to the P3-ROC (and build the LED
 # Pi's host with `wasi-spi` instead — the plugins are independent features).
-wpf-hardware = ["wash-runtime/wpf-hardware", "wpf-core-events", "wpf-config-includes"]
-# Pinball cross-component event bus (`wpf:core/events`) over the host's data
-# NATS connection. Enabled automatically with `wpf-hardware` (the game-logic
-# host needs both); enable it alone for hosts that only relay events.
-wpf-core-events = ["wash-runtime/wpf-core-events"]
+wpf-hardware = ["wash-runtime/wpf-hardware", "wpf-config-includes"]
+# The pinball event bus (`wpf:core/events`) is no longer a native feature: it
+# ships as a host component plugin built in the wasm-pinball-framework repo
+# (`wash host --host-plugin id=wpf-events,file=...`, behind
+# `host-component-plugins`).
 # Pinball machine-config file access (`wpf:config-loader/includes`), rooted at
 # the machine folder named in the workload manifest. Enabled automatically
 # with `wpf-hardware` (the game-logic host loads the machine config).

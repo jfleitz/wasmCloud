@@ -24,7 +24,6 @@
 //! - [`wasmcloud_secrets`] - Secrets delivery from bind-time config (`wasmcloud:secrets`)
 //! - [`wasi_spi`] - SPI bus access for host-attached peripherals (`wasi:spi`)
 //! - [`wpf_hardware`] - Pinball coil/switch control via a P3-ROC (`wpf:hardware`)
-//! - [`wpf_core_events`] - Pinball cross-component event bus over NATS (`wpf:core/events`)
 //! - [`wpf_config_includes`] - Pinball machine-config file access (`wpf:config-loader/includes`)
 
 use std::collections::HashMap;
@@ -62,9 +61,6 @@ pub mod wasi_spi;
 
 #[cfg(all(feature = "wpf-hardware", target_os = "linux"))]
 pub mod wpf_hardware;
-
-#[cfg(feature = "wpf-core-events")]
-pub mod wpf_core_events;
 
 #[cfg(feature = "wpf-config-includes")]
 pub mod wpf_config_includes;

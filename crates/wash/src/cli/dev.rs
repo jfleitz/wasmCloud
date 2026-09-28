@@ -365,20 +365,6 @@ impl CliCommand for DevCommand {
             debug!("wpf:hardware plugin registered with P3-ROC backend");
         }
 
-        // Add wpf:core/events plugin — the wasm-pinball-framework's cross-
-        // component event bus. NATS-only: it publishes on the dev session's
-        // data NATS connection, so without `dev.data_nats_url` it is skipped
-        // (there is no in-memory backend to fall back to).
-        #[cfg(feature = "wpf-core-events")]
-        if let Some(client) = &data_nats_client {
-            host_builder = host_builder.with_plugin(Arc::new(
-                plugin::wpf_core_events::CoreEvents::new(client.clone()),
-            ))?;
-            debug!("wpf:core/events plugin registered with NATS backend (data_nats_url)");
-        } else {
-            debug!("wpf:core/events plugin skipped: no dev.data_nats_url configured");
-        }
-
         // Add wpf:config-loader/includes plugin — machine-config file access
         // rooted at the machine folder from the workload's interface config.
         #[cfg(feature = "wpf-config-includes")]

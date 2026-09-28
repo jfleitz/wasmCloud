@@ -1082,18 +1082,6 @@ impl CliCommand for HostCommand {
                 .with_plugin(Arc::new(plugin::wpf_hardware::P3Roc::builder().build()))?;
         }
 
-        // Enable wpf:core/events — the wasm-pinball-framework's cross-
-        // component event bus. `events.post` publishes each event as one JSON
-        // message on `<subject-prefix>.<event-name>` (default prefix
-        // `wpf.events`, override via `wpf:core` interface config) over the
-        // host's data NATS connection.
-        #[cfg(feature = "wpf-core-events")]
-        {
-            cluster_host_builder = cluster_host_builder.with_plugin(Arc::new(
-                plugin::wpf_core_events::CoreEvents::new(data_nats_client.clone()),
-            ))?;
-        }
-
         // Enable wpf:config-loader/includes — machine-config file access for
         // the wasm-pinball-framework, rooted at the machine folder each
         // workload names in its `wpf:config-loader` interface config
