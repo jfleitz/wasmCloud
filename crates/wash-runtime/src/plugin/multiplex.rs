@@ -689,6 +689,7 @@ mod tests {
                 ("url".to_string(), url.to_string()),
             ]),
             name: None,
+            plugin_secrets: Vec::new(),
         }
     }
 
