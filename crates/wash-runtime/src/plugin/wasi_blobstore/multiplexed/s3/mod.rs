@@ -64,7 +64,6 @@
 //!   empty segments, dot segments or control characters. Unsupported names
 //!   are rejected rather than silently rewritten to a different S3 key.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -78,6 +77,7 @@ use sha2::{Digest, Sha256};
 use crate::host::declared_port::Protocol;
 use crate::plugin::PluginEgressPolicy;
 use crate::plugin::multiplex::{BACKEND_CONFIG_KEY, BackendProvider};
+use crate::wit::Config;
 
 use super::{
     BlobBackend, BlobBackendError, BlobId, BlobResult, ContainerInfo, ObjectInfo, clamp_range,
@@ -86,7 +86,7 @@ use super::{
 mod config;
 
 pub(crate) use config::host_owned_spellings;
-use config::{builder_from_config, lookup, normalize_key, virtual_hosted};
+use config::{builder_from_config, lookup, normalize_key, parses_a_secret, virtual_hosted};
 
 /// Ceiling on bucket clients kept per backend, and how long an unused one
 /// stays. Each client owns an HTTP connection pool, and a guest can name as
@@ -373,10 +373,11 @@ impl BackendProvider<BlobId> for S3BlobProvider {
     /// Hash of the whole config, length-prefixed: no plaintext secret in the
     /// pool map. Secrets and session tokens are *in* it on purpose, since a
     /// pool hit refreshes `last_used` and would otherwise pin a stale token.
-    fn pool_key(&self, config: &HashMap<String, String>) -> Option<String> {
+    fn pool_key(&self, config: &Config) -> Option<String> {
         let mut pairs: Vec<(String, &str)> = config
             .iter()
             .filter_map(|(key, value)| {
+                let value = value.expose().unwrap_or_default();
                 let normalized = normalize_key(key);
                 if normalized == BACKEND_CONFIG_KEY {
                     return None;
@@ -384,7 +385,7 @@ impl BackendProvider<BlobId> for S3BlobProvider {
                 let name = lookup(&normalized)
                     .map(|spec| spec.name.to_string())
                     .unwrap_or(normalized);
-                Some((name, value.as_str()))
+                Some((name, value))
             })
             .collect();
         pairs.sort();
@@ -400,25 +401,28 @@ impl BackendProvider<BlobId> for S3BlobProvider {
 
     async fn instantiate(
         &self,
-        config: &HashMap<String, String>,
+        config: &Config,
         _egress: Option<&PluginEgressPolicy>,
     ) -> anyhow::Result<BlobId> {
         let base = builder_from_config(config)?;
         // Probe-build so a config error fails the bind, not the first request.
-        base.clone()
-            .with_bucket_name("probe")
-            .build()
-            .context("invalid s3 blobstore config")?;
+        let probe = base.clone().with_bucket_name("probe").build();
+        if parses_a_secret(config) {
+            probe.map_err(|_| {
+                anyhow::anyhow!(
+                    "invalid s3 blobstore config; the reason is withheld because it may quote a \
+                     secret"
+                )
+            })?;
+        } else {
+            probe.context("invalid s3 blobstore config")?;
+        }
         Ok(Arc::new(S3BlobBackend::new(base, MAX_BUCKET_CLIENTS)))
     }
 
     /// The endpoint the client dials, derived as `AmazonS3Builder::build`
     /// derives it, without the bucket.
-    fn check_egress(
-        &self,
-        config: &HashMap<String, String>,
-        policy: &PluginEgressPolicy,
-    ) -> anyhow::Result<()> {
+    fn check_egress(&self, config: &Config, policy: &PluginEgressPolicy) -> anyhow::Result<()> {
         // A config the builder refuses fails in `instantiate`, as the config
         // error it is rather than an egress refusal.
         let Ok(builder) = builder_from_config(config) else {
@@ -437,7 +441,17 @@ impl BackendProvider<BlobId> for S3BlobProvider {
                 let region = get(AmazonS3ConfigKey::Region).unwrap_or_else(|| "us-east-1".into());
                 format!("https://s3.{region}.amazonaws.com")
             });
-        policy.check_url(&url, Protocol::Tcp, 443)
+        let checked = policy.check_url(&url, Protocol::Tcp, 443);
+        if parses_a_secret(config) {
+            checked.map_err(|_| {
+                anyhow::anyhow!(
+                    "s3 blobstore endpoint was refused; the reason is withheld because it may \
+                     quote a secret"
+                )
+            })
+        } else {
+            checked
+        }
     }
 }
 
@@ -494,7 +508,7 @@ mod tests {
 
     #[test]
     fn pool_key_is_some_for_empty_config() {
-        assert!(S3BlobProvider.pool_key(&HashMap::new()).is_some());
+        assert!(S3BlobProvider.pool_key(&Config::new()).is_some());
     }
 
     #[test]
@@ -595,7 +609,38 @@ mod tests {
         assert!(err.contains("invalid s3 blobstore config"), "{err}");
     }
 
-    fn egress(config: &HashMap<String, String>, policy: &PluginEgressPolicy) -> anyhow::Result<()> {
+    #[tokio::test]
+    async fn a_secret_object_store_parses_is_never_quoted() {
+        use crate::plugin::SecretValue;
+
+        // Secret credentials are passed through as given, so the reason stays.
+        let mut config = cfg(&[("allow_http", "maybe")]);
+        config.insert("access_key_id", SecretValue::new("AKIA-SECRET"));
+        config.insert("secret_access_key", SecretValue::new("s"));
+        let Err(err) = S3BlobProvider.instantiate(&config, None).await else {
+            panic!("a bad bool must fail the bind");
+        };
+        assert!(format!("{err:#}").contains("maybe"), "{err:#}");
+
+        // A secret object_store parses could be quoted, so the reason goes.
+        let mut config = keyed(&[]);
+        config.insert("allow_http", SecretValue::new("SECRET-MUST-NOT-LEAK"));
+        let Err(err) = S3BlobProvider.instantiate(&config, None).await else {
+            panic!("a bad bool must fail the bind");
+        };
+        assert!(!format!("{err:#}").contains("MUST-NOT-LEAK"), "{err:#}");
+
+        let mut config = keyed(&[]);
+        config.insert(
+            "endpoint",
+            SecretValue::new("http://secret-must-not-leak.internal:9000"),
+        );
+        let policy = PluginEgressPolicy::allowing(&[]);
+        let err = egress(&config, &policy).expect_err("an unlisted endpoint is refused");
+        assert!(!format!("{err:#}").contains("must-not-leak"), "{err:#}");
+    }
+
+    fn egress(config: &Config, policy: &PluginEgressPolicy) -> anyhow::Result<()> {
         S3BlobProvider.check_egress(config, policy)
     }
 

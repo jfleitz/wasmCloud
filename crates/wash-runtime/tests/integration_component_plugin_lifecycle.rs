@@ -778,7 +778,8 @@ async fn test_lifecycle_hooks_driven_directly() -> Result<()> {
     let mut labeled = acme_kv_interface();
     labeled.name = Some("cache".to_string());
     labeled.version = Some(semver::Version::parse("0.1.0-rc.1+build5").unwrap());
-    labeled.config = HashMap::from([("tier".to_string(), "gold".to_string())]);
+    labeled.config =
+        wash_runtime::wit::Config::from_iter([("tier".to_string(), "gold".to_string())]);
     let labeled: HashSet<WitInterface> = [labeled].into_iter().collect();
     plugin
         .on_workload_bind(&bare_workload("wl-labeled"), WitInterfaces::new(&labeled))
@@ -1036,7 +1037,8 @@ async fn test_lifecycle_optional_fields_round_trip() -> Result<()> {
     let mut labeled = acme_kv_interface();
     labeled.name = Some("cache".to_string());
     labeled.version = Some(semver::Version::parse("0.1.0-rc.1+build5").unwrap());
-    labeled.config = HashMap::from([("tier".to_string(), "gold".to_string())]);
+    labeled.config =
+        wash_runtime::wit::Config::from_iter([("tier".to_string(), "gold".to_string())]);
     let labeled: HashSet<WitInterface> = [labeled].into_iter().collect();
     plugin
         .on_workload_bind(&bare_workload("wl-optional"), WitInterfaces::new(&labeled))
@@ -1084,7 +1086,7 @@ async fn test_plugin_without_lifecycle_export_is_unaffected() -> Result<()> {
 /// it is handed. It links nothing: the workload's plain import stays with the
 /// component plugin, and this one only receives the entry named after it.
 struct RecordingKv {
-    seen: std::sync::Mutex<Vec<HashMap<String, String>>>,
+    seen: std::sync::Mutex<Vec<wash_runtime::wit::Config>>,
 }
 
 const RECORDING_KV_ID: &str = "other-kv";
@@ -1166,12 +1168,18 @@ async fn test_lifecycle_bind_delivers_only_this_plugins_entries() -> Result<()> 
         ..Default::default()
     });
     let mut wasi_config = WitInterface::from("wasi:config/store@0.2.0-rc.1");
-    wasi_config.config = HashMap::from([("api-key".to_string(), "config-secret".to_string())]);
+    wasi_config.config = wash_runtime::wit::Config::from_iter([(
+        "api-key".to_string(),
+        "config-secret".to_string(),
+    )]);
     workload.host_interfaces.push(wasi_config);
     // A second `acme:kv` binding, routed by name to the native plugin.
     workload.host_interfaces.push(WitInterface {
         name: Some(RECORDING_KV_ID.to_string()),
-        config: HashMap::from([("backend-key".to_string(), "kv-secret".to_string())]),
+        config: wash_runtime::wit::Config::from_iter([(
+            "backend-key".to_string(),
+            "kv-secret".to_string(),
+        )]),
         ..acme_kv_interface()
     });
 
@@ -1214,9 +1222,9 @@ async fn test_lifecycle_bind_delivers_only_this_plugins_entries() -> Result<()> 
     let seen = other.seen.lock().unwrap().clone();
     assert_eq!(
         seen,
-        vec![HashMap::from([(
-            "backend-key".to_string(),
-            "kv-secret".to_string()
+        vec![wash_runtime::wit::Config::from_iter([(
+            "backend-key",
+            "kv-secret"
         )])],
         "the named binding's plugin must see only its own entry"
     );

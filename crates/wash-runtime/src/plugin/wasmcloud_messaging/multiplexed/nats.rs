@@ -4,7 +4,6 @@
 //! serving the outbound (consumer) `publish`/`request` path — the same surface
 //! the standalone `NatsMessaging` plugin uses.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::plugin::PluginEgressPolicy;
@@ -76,8 +75,8 @@ pub struct NatsMsgProvider;
 
 #[async_trait::async_trait]
 impl BackendProvider<MsgId> for NatsMsgProvider {
-    fn pool_key(&self, config: &HashMap<String, String>) -> Option<String> {
-        config.get("url").cloned()
+    fn pool_key(&self, config: &crate::wit::Config) -> Option<String> {
+        config.expose("url").map(str::to_string)
     }
     fn backend_type(&self) -> &'static str {
         "nats"
@@ -85,11 +84,11 @@ impl BackendProvider<MsgId> for NatsMsgProvider {
 
     async fn instantiate(
         &self,
-        config: &HashMap<String, String>,
+        config: &crate::wit::Config,
         egress: Option<&PluginEgressPolicy>,
     ) -> anyhow::Result<MsgId> {
         let url = config
-            .get("url")
+            .expose("url")
             .ok_or_else(|| anyhow::anyhow!("nats messaging backend requires a 'url' config"))?;
         let client = connect_nats(url, egress).await?;
         Ok(Arc::new(NatsMsgBackend {
@@ -99,7 +98,7 @@ impl BackendProvider<MsgId> for NatsMsgProvider {
 
     fn check_egress(
         &self,
-        config: &HashMap<String, String>,
+        config: &crate::wit::Config,
         policy: &PluginEgressPolicy,
     ) -> anyhow::Result<()> {
         check_nats_url(config, policy)

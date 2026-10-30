@@ -117,7 +117,7 @@ fn acme_kv_interface() -> WitInterface {
         package: "kv".to_string(),
         interfaces: ["store".to_string()].into_iter().collect(),
         version: Some(semver::Version::parse("0.1.0").unwrap()),
-        config: HashMap::new(),
+        config: Default::default(),
         name: None,
     }
 }
@@ -197,7 +197,7 @@ impl Call {
     }
 
     fn host_interfaces(self) -> Vec<WitInterface> {
-        let mut config = HashMap::new();
+        let mut config = wash_runtime::wit::Config::new();
         config.insert("host".to_string(), self.host_header().to_string());
         let http = WitInterface {
             namespace: "wasi".to_string(),

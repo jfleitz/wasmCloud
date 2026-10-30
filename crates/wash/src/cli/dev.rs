@@ -875,10 +875,7 @@ fn build_workload_host_interfaces(
         {
             Some(existing) => {
                 for (k, v) in workload_config {
-                    existing
-                        .config
-                        .entry(k.clone())
-                        .or_insert_with(|| v.clone());
+                    existing.config.entry(k.clone()).or_insert_with(|| v.into());
                 }
             }
             None => {
@@ -887,7 +884,7 @@ fn build_workload_host_interfaces(
                     package: "config".into(),
                     interfaces: Default::default(),
                     version: None,
-                    config: workload_config.clone(),
+                    config: workload_config.clone().into(),
                     name: None,
                 });
             }
@@ -1172,7 +1169,7 @@ mod tests {
             package: package.into(),
             interfaces: HashSet::new(),
             version: None,
-            config: HashMap::new(),
+            config: Default::default(),
             name: None,
         }
     }
@@ -1180,7 +1177,7 @@ mod tests {
     fn iface_with_config(namespace: &str, package: &str, kvs: &[(&str, &str)]) -> WitInterface {
         let mut i = iface(namespace, package);
         for (k, v) in kvs {
-            i.config.insert((*k).into(), (*v).into());
+            i.config.insert(*k, *v);
         }
         i
     }

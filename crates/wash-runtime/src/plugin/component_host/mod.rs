@@ -111,7 +111,8 @@ mod workload_call;
 use lifecycle::{
     BindReply, HOST_LIFECYCLE_EXPORT, LifecycleFuncs, POISON_EVICT_STRIKES, attribute_replay_fault,
     await_bind_reply, evict_workload, lifecycle_funcs, remove_and_unbind, replay_snapshot,
-    report_workload_failed, send_lifecycle_job, spawn_deferred_unbind, workload_info_val,
+    report_workload_failed, send_lifecycle_job, spawn_deferred_unbind, without_secrets,
+    workload_info_val,
 };
 use secret_source::{ComponentSecretSource, HOST_SECRET_SOURCE_EXPORT, check_secret_source_export};
 pub(crate) use secret_source::{
@@ -924,8 +925,9 @@ impl HostPlugin for ComponentHostPlugin {
                     return Ok(());
                 }
                 Ok(Err(msg)) => anyhow::anyhow!(
-                    "host component plugin '{}' rejected workload '{workload_id}': {msg}",
-                    self.id
+                    "host component plugin '{}' rejected workload '{workload_id}': {}",
+                    self.id,
+                    without_secrets(msg, &interfaces)
                 ),
                 Err(e) => anyhow::Error::from(e).context(format!(
                     "host component plugin '{}' returned a malformed on-workload-bind reply",
@@ -1140,7 +1142,7 @@ async fn link_native_imports(
     let native_imports: Vec<WitInterface> = merged
         .into_values()
         .map(|mut wit| {
-            wit.config = config.clone();
+            wit.config = config.clone().into();
             wit
         })
         .collect();
@@ -2503,7 +2505,7 @@ mod tests {
     /// records the config it was bound with.
     #[derive(Default)]
     struct HostOwnedUrlPlugin {
-        seen_config: Mutex<Option<HashMap<String, String>>>,
+        seen_config: Mutex<Option<crate::wit::Config>>,
     }
 
     #[async_trait]
@@ -3005,6 +3007,9 @@ mod tests {
         .await
         .expect("the plugin's own config is operator config");
 
-        assert_eq!(native.seen_config.lock().unwrap().as_ref(), Some(&config));
+        assert_eq!(
+            native.seen_config.lock().unwrap().clone(),
+            Some(config.into())
+        );
     }
 }

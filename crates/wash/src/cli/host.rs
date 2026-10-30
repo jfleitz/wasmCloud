@@ -2001,7 +2001,7 @@ host:
         declared: &wash_runtime::plugin::PluginBindingSet,
         binding: &str,
         workload: &[(&str, &str)],
-    ) -> anyhow::Result<std::collections::HashMap<String, String>> {
+    ) -> anyhow::Result<wash_runtime::wit::Config> {
         declared.resolve(
             binding,
             &workload
@@ -2026,10 +2026,7 @@ host:
         ]);
         let declared = nats_bindings(&host, &config_from("{}")).unwrap();
         let resolved = resolve(&declared, "", &[]).unwrap();
-        assert_eq!(
-            resolved.get("servers").map(String::as_str),
-            Some("nats://workloads:4222")
-        );
+        assert_eq!(resolved.get("servers"), Some("nats://workloads:4222"));
     }
 
     /// With no `host.plugins` entry a host denies by default — and, owning
@@ -2047,10 +2044,7 @@ host:
         let host = parse(&["--data-nats-url", "nats://data:4222"]);
         let declared = nats_bindings(&host, &config_from("{}")).expect("the flags must resolve");
         let resolved = resolve(&declared, "", &[]).unwrap();
-        assert_eq!(
-            resolved.get("servers").map(String::as_str),
-            Some("nats://data:4222")
-        );
+        assert_eq!(resolved.get("servers"), Some("nats://data:4222"));
     }
 
     /// The data plane's TLS material rides with its address as one bundle. A
@@ -2068,7 +2062,7 @@ host:
 
         let inherited = resolve(&declared, "", &[]).unwrap();
         assert_eq!(
-            inherited.get("tls-ca").map(String::as_str),
+            inherited.get("tls-ca"),
             Some("/certs/ca.crt"),
             "a binding on the data plane gets its certs"
         );
@@ -2083,10 +2077,7 @@ host:
             &[("servers", "nats://elsewhere:4222")],
         )
         .unwrap();
-        assert_eq!(
-            elsewhere.get("servers").map(String::as_str),
-            Some("nats://elsewhere:4222")
-        );
+        assert_eq!(elsewhere.get("servers"), Some("nats://elsewhere:4222"));
         assert!(
             !elsewhere.contains_key("tls-ca"),
             "the data plane's certs say nothing about another NATS: {elsewhere:?}"
@@ -2133,10 +2124,7 @@ host:
 
         let resolved = resolve(&declared, "", &[("subject-allow", "orders.>")])
             .expect("allow accepts a workload's own grant");
-        assert_eq!(
-            resolved.get("subject-allow").map(String::as_str),
-            Some("orders.>")
-        );
+        assert_eq!(resolved.get("subject-allow"), Some("orders.>"));
     }
 
     /// An unparseable policy is a config error, named as one.

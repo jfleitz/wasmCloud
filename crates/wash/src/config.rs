@@ -718,7 +718,7 @@ impl HostPluginConfig {
         let owner = format!("host.plugins '{}'", self.id);
         let (base, base_secrets) = resolve(&self.environment, &owner)?;
         let mut set = wash_runtime::plugin::PluginBindingSet::new(self.id.clone())
-            .with_base(base)
+            .with_base(base.into())
             .with_base_secrets(base_secrets)
             .with_host_owned_keys(&self.host_owned_keys)
             .with_workload_config(self.workload_config.unwrap_or(default_policy).into());
@@ -747,7 +747,7 @@ impl HostPluginConfig {
             let (config, secrets) =
                 resolve(&binding.environment, &format!("{owner} binding '{name}'"))?;
             set = set
-                .with_binding(name.clone(), config)
+                .with_binding(name.clone(), config.into())
                 .with_binding_secrets(name.clone(), secrets);
         }
         Ok(set)
@@ -1840,7 +1840,7 @@ pub fn example_config() -> Config {
                 package: "http".to_string(),
                 interfaces: HashSet::from_iter(["incoming-handler".to_string()]),
                 version: Some(semver::Version::new(0, 2, 0)),
-                config: HashMap::new(),
+                config: Default::default(),
                 name: None,
             }],
             data_nats_url: url::Url::parse("nats://127.0.0.1:4222").ok(),
@@ -2655,7 +2655,7 @@ host:
         let resolved = declared
             .resolve(
                 "orders",
-                &HashMap::new(),
+                &Default::default(),
                 &wash_runtime::plugin::wasmcloud_nats::binding_schema(),
                 wash_runtime::plugin::bindings::never_narrows(),
             )
@@ -2664,17 +2664,14 @@ host:
         // The base reaches the named binding, the grants come with it, and the
         // credential arrives from the secrets catalog rather than a manifest.
         assert_eq!(
-            resolved.get("servers").map(String::as_str),
+            resolved.get("servers"),
             Some("nats://nats.default.svc:4222")
         );
         assert_eq!(
-            resolved.get("subject-allow").map(String::as_str),
+            resolved.get("subject-allow"),
             Some("orders.processed,orders.received")
         );
-        assert_eq!(
-            resolved.get("creds").map(String::as_str),
-            Some("/etc/nats/orders.creds")
-        );
+        assert_eq!(resolved.get("creds"), Some("/etc/nats/orders.creds"));
     }
 
     /// The S3 blobstore backend takes its credentials the same way: from the
@@ -2715,13 +2712,13 @@ host:
         let resolved = declared
             .resolve(
                 "assets",
-                &HashMap::new(),
+                &wash_runtime::wit::Config::new(),
                 &schema,
                 wash_runtime::plugin::bindings::never_narrows(),
             )
             .expect("a workload that asks for `assets` is served");
         assert_eq!(
-            resolved.get("AWS_ACCESS_KEY_ID").map(String::as_str),
+            resolved.get("AWS_ACCESS_KEY_ID"),
             Some("AKIA-FROM-THE-CATALOG"),
             "the credential arrives from the secrets catalog"
         );
@@ -2733,10 +2730,7 @@ host:
         let err = declared
             .resolve(
                 "assets",
-                &HashMap::from([(
-                    "aws_secret_access_key".to_string(),
-                    "from-the-manifest".to_string(),
-                )]),
+                &wash_runtime::wit::Config::from([("aws_secret_access_key", "from-the-manifest")]),
                 &schema,
                 wash_runtime::plugin::bindings::never_narrows(),
             )
@@ -2994,8 +2988,8 @@ dev:
             "dev leaves a manifest free to describe its own binding"
         );
         assert_eq!(
-            nats.host_layer("orders")["servers"],
-            "nats://127.0.0.1:4322"
+            nats.host_layer("orders").get("servers"),
+            Some("nats://127.0.0.1:4322")
         );
 
         assert_eq!(
@@ -3113,10 +3107,13 @@ host:
         assert_eq!(set.binding_names().collect::<Vec<_>>(), ["orders"]);
 
         let layer = set.host_layer("orders");
-        assert_eq!(layer["servers"], "nats://nats.default.svc:4222");
-        assert_eq!(layer["subject-allow"], "orders.processed,orders.received");
-        assert_eq!(layer["stream-allow"], "ORDERS");
-        assert_eq!(layer["creds"], "/etc/nats/orders.creds");
+        assert_eq!(layer.get("servers"), Some("nats://nats.default.svc:4222"));
+        assert_eq!(
+            layer.get("subject-allow"),
+            Some("orders.processed,orders.received")
+        );
+        assert_eq!(layer.get("stream-allow"), Some("ORDERS"));
+        assert_eq!(layer.get("creds"), Some("/etc/nats/orders.creds"));
 
         // Declared-but-unset keys are the operator's too.
         // `hostOwnedKeys` claims a key the operator left unset. Setting a value

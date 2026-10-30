@@ -14,8 +14,6 @@
 //! `cargo test --include-ignored`.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::collections::HashMap;
-
 use anyhow::{Context, Result};
 use redis::AsyncCommands;
 use testcontainers::{
@@ -52,7 +50,7 @@ async fn redis_backend_interops_with_a_raw_keyspace() -> Result<()> {
     // The multiplexed backend pointed at the same redis (no prefix => flat).
     let backend: wash_runtime::plugin::wasi_keyvalue::KvId = RedisProvider
         .instantiate(
-            &HashMap::from([
+            &wash_runtime::wit::Config::from_iter([
                 ("backend".to_string(), "redis".to_string()),
                 ("url".to_string(), url.clone()),
             ]),
@@ -107,7 +105,7 @@ async fn redis_backend_interops_with_a_raw_keyspace() -> Result<()> {
     // flat keys written above.
     let prefixed: wash_runtime::plugin::wasi_keyvalue::KvId = RedisProvider
         .instantiate(
-            &HashMap::from([
+            &wash_runtime::wit::Config::from_iter([
                 ("backend".to_string(), "redis".to_string()),
                 ("url".to_string(), url.clone()),
                 ("prefix".to_string(), "app1:".to_string()),

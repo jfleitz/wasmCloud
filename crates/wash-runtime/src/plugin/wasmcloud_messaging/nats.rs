@@ -60,7 +60,7 @@ use crate::engine::workload::{ResolvedWorkload, WorkloadItem};
 use crate::observability::{MeterKind, Meters};
 use crate::plugin::wasmcloud_messaging::Admitted;
 use crate::plugin::{HostPlugin, WitInterfaces, WorkloadTracker};
-use crate::wit::{WitInterface, WitWorld};
+use crate::wit::{ConfigStr, ConfigValue, WitInterface, WitWorld};
 
 pub(crate) const PLUGIN_MESSAGING_ID: &str = "wasmcloud-messaging";
 const CONSUMER_GROUP_CONFIG: &str = "consumer_group";
@@ -82,6 +82,18 @@ pub struct ComponentData {
 enum ConsumerGroup {
     Grouped(String),
     Broadcast,
+}
+
+/// A component's own config, which is text, or else the interface's, which may
+/// be a secret.
+fn first<'a>(
+    local: &'a Option<String>,
+    interface: &'a Option<ConfigValue>,
+) -> Option<ConfigStr<'a>> {
+    local
+        .as_deref()
+        .map(ConfigStr::from)
+        .or_else(|| interface.as_ref()?.as_config_str())
 }
 
 impl ConsumerGroup {
@@ -357,12 +369,20 @@ impl HostPlugin for NatsMessaging {
         // (so workers in one workload can subscribe to different subjects),
         // falling back to the workload-scoped host interface config. Capture
         // the host-interface fallback before borrowing the component.
-        let interface_subscriptions = interface.config.get("subscriptions").cloned();
-        let interface_consumer_group = interface.config.get(CONSUMER_GROUP_CONFIG).cloned();
-        let interface_max_in_flight = interface.config.get(super::MAX_IN_FLIGHT_CONFIG).cloned();
-        let interface_admission_wait = interface.config.get(super::ADMISSION_WAIT_CONFIG).cloned();
-        let interface_admission_group =
-            interface.config.get(super::ADMISSION_GROUP_CONFIG).cloned();
+        let interface_subscriptions = interface.config.expose("subscriptions").map(str::to_string);
+        let interface_consumer_group = interface.config.get_value(CONSUMER_GROUP_CONFIG).cloned();
+        let interface_max_in_flight = interface
+            .config
+            .get_value(super::MAX_IN_FLIGHT_CONFIG)
+            .cloned();
+        let interface_admission_wait = interface
+            .config
+            .get_value(super::ADMISSION_WAIT_CONFIG)
+            .cloned();
+        let interface_admission_group = interface
+            .config
+            .expose(super::ADMISSION_GROUP_CONFIG)
+            .map(str::to_string);
 
         // Bind only the revision(s) the workload actually declared: the two
         // surfaces are separate linker instances, and binding one a component
@@ -428,25 +448,24 @@ impl HostPlugin for NatsMessaging {
                 // bound; its delivery path is gated elsewhere.
                 WorkloadItem::Service(_) => "service".to_string(),
             };
-            let max_in_flight = super::parse_max_in_flight(
-                local_max_in_flight
-                    .as_deref()
-                    .or(interface_max_in_flight.as_deref()),
-            );
-            let consumer_group = ConsumerGroup::resolve(
-                local_consumer_group
-                    .as_deref()
-                    .or(interface_consumer_group.as_deref()),
+            let max_in_flight =
+                super::parse_max_in_flight(first(&local_max_in_flight, &interface_max_in_flight));
+            let configured_group = first(&local_consumer_group, &interface_consumer_group);
+            let resolved_group = ConsumerGroup::resolve(
+                configured_group.map(ConfigStr::expose),
                 component_handle.workload_namespace(),
                 component_handle.workload_name(),
                 &component_name,
-            )?;
-
-            let admission_wait = super::parse_admission_wait(
-                local_admission_wait
-                    .as_deref()
-                    .or(interface_admission_wait.as_deref()),
             );
+            let consumer_group = match configured_group {
+                Some(group) => group.guard(CONSUMER_GROUP_CONFIG, resolved_group)?,
+                None => resolved_group?,
+            };
+
+            let admission_wait = super::parse_admission_wait(first(
+                &local_admission_wait,
+                &interface_admission_wait,
+            ));
             // The same namespace/workload/component triple the consumer group
             // is built from above. It both attributes a shed message to
             // something a manifest author recognizes and selects the gate, so

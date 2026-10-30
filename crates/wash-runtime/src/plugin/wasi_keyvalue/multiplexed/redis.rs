@@ -1,6 +1,5 @@
 //! Redis-backed [`KvBackend`] for the multiplexed keyvalue plugin.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::Context as _;
@@ -208,11 +207,11 @@ pub struct RedisProvider;
 
 #[async_trait::async_trait]
 impl BackendProvider<KvId> for RedisProvider {
-    fn pool_key(&self, config: &HashMap<String, String>) -> Option<String> {
+    fn pool_key(&self, config: &crate::wit::Config) -> Option<String> {
         // Pool by url AND prefix: two interfaces with the same url but different
         // prefixes are different logical stores and must not share an instance.
-        let url = config.get("url")?;
-        let prefix = config.get("prefix").map(String::as_str).unwrap_or("");
+        let url = config.expose("url")?;
+        let prefix = config.expose("prefix").unwrap_or("");
         Some(format!("{url}\u{0}{prefix}"))
     }
     fn backend_type(&self) -> &'static str {
@@ -221,39 +220,46 @@ impl BackendProvider<KvId> for RedisProvider {
 
     async fn instantiate(
         &self,
-        config: &HashMap<String, String>,
+        config: &crate::wit::Config,
         _egress: Option<&PluginEgressPolicy>,
     ) -> anyhow::Result<KvId> {
         let url = config
-            .get("url")
+            .value("url")
             .ok_or_else(|| anyhow::anyhow!("redis keyvalue backend requires a 'url' config"))?;
-        let client = redis::Client::open(url.as_str())?;
+        let client = url.guard("url", redis::Client::open(url.expose()))?;
         let conn = client.get_multiplexed_async_connection().await?;
-        let prefix = config.get("prefix").filter(|p| !p.is_empty()).cloned();
+        let prefix = config
+            .expose("prefix")
+            .filter(|p| !p.is_empty())
+            .map(str::to_string);
         Ok(Arc::new(RedisBackend { conn, prefix }))
     }
 
-    /// Checks the address `redis` itself parses out of the url. A unix socket
-    /// has no host for `allowedHosts` to name, so it is refused.
     fn check_egress(
         &self,
-        config: &HashMap<String, String>,
+        config: &crate::wit::Config,
         policy: &PluginEgressPolicy,
     ) -> anyhow::Result<()> {
-        let Some(url) = config.get("url") else {
+        let Some(url) = config.value("url") else {
             return Ok(());
         };
-        let info = redis::IntoConnectionInfo::into_connection_info(url.as_str())
-            .context("redis url is invalid")?;
-        match info.addr {
-            redis::ConnectionAddr::Tcp(host, port) => policy.check_host_port("redis", &host, port),
-            redis::ConnectionAddr::TcpTls { host, port, .. } => {
-                policy.check_host_port("rediss", &host, port)
-            }
-            redis::ConnectionAddr::Unix(path) => anyhow::bail!(
-                "redis endpoint {path:?} is a unix socket, which allowedHosts cannot permit"
-            ),
+        url.guard("url", check_url_egress(url.expose(), policy))
+    }
+}
+
+/// Checks the address `redis` itself parses out of the url. A unix socket has
+/// no host for `allowedHosts` to name, so it is refused.
+fn check_url_egress(url: &str, policy: &PluginEgressPolicy) -> anyhow::Result<()> {
+    let info =
+        redis::IntoConnectionInfo::into_connection_info(url).context("redis url is invalid")?;
+    match info.addr {
+        redis::ConnectionAddr::Tcp(host, port) => policy.check_host_port("redis", &host, port),
+        redis::ConnectionAddr::TcpTls { host, port, .. } => {
+            policy.check_host_port("rediss", &host, port)
         }
+        redis::ConnectionAddr::Unix(path) => anyhow::bail!(
+            "redis endpoint {path:?} is a unix socket, which allowedHosts cannot permit"
+        ),
     }
 }
 
@@ -262,10 +268,7 @@ mod tests {
     use super::*;
 
     fn check(url: &str, policy: &PluginEgressPolicy) -> anyhow::Result<()> {
-        RedisProvider.check_egress(
-            &HashMap::from([("url".to_string(), url.to_string())]),
-            policy,
-        )
+        RedisProvider.check_egress(&[("url", url)].into_iter().collect(), policy)
     }
 
     #[test]
@@ -280,5 +283,22 @@ mod tests {
         assert!(format!("{err:#}").contains("evil.example"), "{err:#}");
         assert!(check("redis://cache.internal:6380", &policy).is_err());
         assert!(check("redis+unix:///var/run/redis.sock", &policy).is_err());
+    }
+
+    #[test]
+    fn a_refused_url_is_quoted_unless_it_is_a_secret() {
+        let policy = PluginEgressPolicy::allowing(&["cache.internal:6379"]);
+        let socket = "redis+unix:///hunter2.sock";
+
+        let err = format!("{:#}", check(socket, &policy).unwrap_err());
+        assert!(err.contains("hunter2"), "{err}");
+
+        let mut secret = crate::wit::Config::new();
+        secret.insert("url", crate::plugin::SecretValue::new(socket));
+        let err = format!(
+            "{:#}",
+            RedisProvider.check_egress(&secret, &policy).unwrap_err()
+        );
+        assert!(!err.contains("hunter2"), "{err}");
     }
 }

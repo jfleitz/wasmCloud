@@ -462,12 +462,29 @@ pub(super) fn workload_info_val(
     ])
 }
 
+/// `msg` from the plugin with each secret `interfaces` handed it written as
+/// `<redacted>`: past WIT a secret is text, and a plugin may quote the value
+/// it rejects.
+pub(super) fn without_secrets(msg: String, interfaces: &WitInterfaces<'_>) -> String {
+    let mut secrets: Vec<&str> = interfaces
+        .iter()
+        .flat_map(|i| i.config.iter())
+        .filter(|(_, v)| v.is_secret())
+        .filter_map(|(_, v)| v.expose())
+        .flat_map(|v| [v, v.trim()])
+        .filter(|v| !v.is_empty())
+        .collect();
+    // Longest first, so a secret containing another is replaced whole.
+    secrets.sort_by_key(|v| std::cmp::Reverse(v.len()));
+    secrets
+        .into_iter()
+        .fold(msg, |msg, v| msg.replace(v, "<redacted>"))
+}
+
 /// One matched [`WitInterface`] as a lifecycle `interface-binding` record.
 fn interface_binding_val(iface: &WitInterface) -> Val {
     let mut names: Vec<&String> = iface.interfaces.iter().collect();
     names.sort();
-    let mut config: Vec<(&String, &String)> = iface.config.iter().collect();
-    config.sort();
     Val::Record(vec![
         (
             "namespace".to_string(),
@@ -497,12 +514,20 @@ fn interface_binding_val(iface: &WitInterface) -> Val {
         // exists now so that merge does not change the record shape again —
         // adding a field to a WIT record is breaking for compiled plugins.
         ("external-id".to_string(), Val::Option(None)),
+        // The plugin takes its config as text over WIT, so each secret is
+        // exposed here, where it is handed over.
         (
             "config".to_string(),
             Val::List(
-                config
-                    .into_iter()
-                    .map(|(k, v)| Val::Tuple(vec![Val::String(k.clone()), Val::String(v.clone())]))
+                iface
+                    .config
+                    .iter()
+                    .filter_map(|(k, v)| {
+                        Some(Val::Tuple(vec![
+                            Val::String(k.clone()),
+                            Val::String(v.expose()?.to_string()),
+                        ]))
+                    })
                     .collect(),
             ),
         ),
@@ -520,4 +545,26 @@ fn version_val(v: &semver::Version) -> Val {
         ("pre".to_string(), Val::Option(pre)),
         ("build".to_string(), Val::Option(build)),
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A plugin quoting a secret it was handed has it redacted, and its text
+    /// config left as written.
+    #[test]
+    fn a_rejection_quoting_a_secret_is_redacted() {
+        let mut iface = WitInterface::from("acme:kv/store@0.1.0");
+        iface.config.insert("url", "redis://cache");
+        iface
+            .config
+            .insert("password", crate::plugin::SecretValue::new("hunter2"));
+        let set = std::collections::HashSet::from([iface]);
+        let msg = without_secrets(
+            "cannot log in to redis://cache with ` hunter2 `".to_string(),
+            &WitInterfaces::new(&set),
+        );
+        assert_eq!(msg, "cannot log in to redis://cache with ` <redacted> `");
+    }
 }

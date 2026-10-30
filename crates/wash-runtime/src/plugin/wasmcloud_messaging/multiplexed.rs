@@ -204,7 +204,7 @@ mod tests {
     use super::*;
 
     fn msg_iface(name: Option<&str>, backend: Option<&str>) -> WitInterface {
-        let mut config = HashMap::new();
+        let mut config = crate::wit::Config::new();
         if let Some(b) = backend {
             config.insert("backend".to_string(), b.to_string());
         }

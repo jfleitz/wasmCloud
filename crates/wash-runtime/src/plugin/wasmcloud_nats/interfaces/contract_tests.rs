@@ -47,13 +47,13 @@ async fn named_resources_keep_their_connection_and_settlement_contract() {
         server.get_host_port_ipv4(4222).await.unwrap()
     );
     let plugin = Arc::new(WasmcloudNats::new());
-    let config = NatsConfig::from_map(&HashMap::from([
-        ("servers".into(), url),
-        ("subject-allow".into(), "contract.>".into()),
-        ("stream-allow".into(), "CONTRACT".into()),
-        ("stream-delete-allow".into(), "CONTRACT".into()),
-        ("bucket-allow".into(), "CONTRACT".into()),
-        ("request-timeout-ms".into(), "1000".into()),
+    let config = NatsConfig::from_map(&crate::wit::Config::from([
+        ("servers", url.as_str()),
+        ("subject-allow", "contract.>"),
+        ("stream-allow", "CONTRACT"),
+        ("stream-delete-allow", "CONTRACT"),
+        ("bucket-allow", "CONTRACT"),
+        ("request-timeout-ms", "1000"),
     ]))
     .unwrap();
     let conn = tokio::time::timeout(Duration::from_secs(30), async {
@@ -70,8 +70,8 @@ async fn named_resources_keep_their_connection_and_settlement_contract() {
     })
     .await
     .unwrap();
-    let mut denied = NatsConfig::from_map(&HashMap::from([(
-        "servers".into(),
+    let mut denied = NatsConfig::from_map(&crate::wit::Config::from([(
+        "servers",
         config.servers.join(","),
     )]))
     .unwrap();

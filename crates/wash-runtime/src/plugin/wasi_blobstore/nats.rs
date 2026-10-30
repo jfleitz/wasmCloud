@@ -858,14 +858,14 @@ impl HostPlugin for NatsBlobstore {
             return Ok(());
         };
 
-        let buckets = match interface.config.get("buckets") {
+        let buckets = match interface.config.expose("buckets") {
             Some(buckets) => buckets.split(',').map(|s| s.to_string()).collect(),
             None => vec![],
         };
 
         let read_only = interface
             .config
-            .get("read_only")
+            .expose("read_only")
             .is_some_and(|v| v == "true");
 
         self.tracker.write().await.add_unresolved_workload(
