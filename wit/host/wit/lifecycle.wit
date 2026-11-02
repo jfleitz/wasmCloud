@@ -49,6 +49,7 @@ package wasmcloud:host@0.1.5;
 /// the next call through the handle comes back `not-running`.
 interface workload-lifecycle {
     use types.{workload-id, component-id};
+    use wasmcloud:secrets/store@2.1.0.{secret};
 
     /// Semantic version of an interface instance (e.g. `0.2.0-draft`).
     record version {
@@ -103,8 +104,14 @@ interface workload-lifecycle {
         /// declare either name, both, or neither.
         external-id: option<string>,
         /// Interface-level configuration from the workload manifest, as
-        /// key/value pairs sorted by key.
+        /// key/value pairs sorted by key. A key filled from a plugin-backed
+        /// `secrets:` entry is in `secrets` instead.
         config: list<tuple<string, string>>,
+        /// Each key filled from a plugin-backed `secrets:` entry, sorted by
+        /// key, as a `wasmcloud:secrets` handle the plugin owns. Read its
+        /// value with `wasmcloud:secrets/reveal`. A replayed bind hands over
+        /// fresh handles.
+        secrets: list<tuple<string, secret>>,
     }
 
     /// Identity and configuration of a workload binding to this plugin.

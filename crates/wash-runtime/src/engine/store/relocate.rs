@@ -52,6 +52,9 @@ pub enum Relocated {
         proxy_id: u64,
         owned: bool,
     },
+    /// A value the host builds in the destination store, such as a host
+    /// resource it hands the callee.
+    Host(ValFactory),
     List(Vec<Relocated>),
     FixedLengthList(Vec<Relocated>),
     Tuple(Vec<Relocated>),
@@ -389,7 +392,9 @@ pub fn extract(
 pub fn inject(mut store: StoreContextMut<SharedCtx>, r: Relocated) -> wasmtime::Result<Val> {
     match r {
         Relocated::Val(v) => Ok(v),
-        Relocated::Stream(factory) | Relocated::Future(factory) => factory(store),
+        Relocated::Stream(factory) | Relocated::Future(factory) | Relocated::Host(factory) => {
+            factory(store)
+        }
         Relocated::Resource { proxy_id, owned } => inject_resource(store, proxy_id, owned),
         Relocated::List(rs) => {
             let mut out = Vec::with_capacity(rs.len());

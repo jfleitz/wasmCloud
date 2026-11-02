@@ -109,10 +109,10 @@ mod secret_source;
 mod workload_call;
 
 use lifecycle::{
-    BindReply, HOST_LIFECYCLE_EXPORT, LifecycleFuncs, POISON_EVICT_STRIKES, attribute_replay_fault,
-    await_bind_reply, evict_workload, lifecycle_funcs, remove_and_unbind, replay_snapshot,
-    report_workload_failed, send_lifecycle_job, spawn_deferred_unbind, without_secrets,
-    workload_info_val,
+    BindInfo, BindReply, HOST_LIFECYCLE_EXPORT, LifecycleFuncs, POISON_EVICT_STRIKES,
+    attribute_replay_fault, await_bind_reply, bind_info, evict_workload, lifecycle_funcs,
+    remove_and_unbind, replay_snapshot, report_workload_failed, send_lifecycle_job,
+    spawn_deferred_unbind,
 };
 use secret_source::{ComponentSecretSource, HOST_SECRET_SOURCE_EXPORT, check_secret_source_export};
 pub(crate) use secret_source::{
@@ -194,10 +194,10 @@ struct ComponentHostPluginState {
     /// registry. Lock-free reads for the same reason as `tx`.
     registry: ArcSwapOption<JobRegistry>,
     /// Workloads currently bound to this plugin, as workload id → the
-    /// `workload-info` value delivered to `on-workload-bind`. The supervisor
+    /// `workload-info` delivered to `on-workload-bind`. The supervisor
     /// snapshots it on each (re)start to replay binds into the fresh
     /// incarnation. Empty unless the plugin exports the lifecycle interface.
-    bound: Mutex<BTreeMap<Arc<str>, Val>>,
+    bound: Mutex<BTreeMap<Arc<str>, BindInfo>>,
     /// Consecutive `on-workload-bind` traps attributed to each workload since it
     /// last bound cleanly — the quarantine strike count. Harvested from the
     /// faulted incarnation's registry after each fault; a workload reaching
@@ -861,7 +861,7 @@ impl HostPlugin for ComponentHostPlugin {
         let Some(lifecycle) = &self.lifecycle else {
             return Ok(());
         };
-        let info = workload_info_val(workload, &interfaces);
+        let info = bind_info(self.id, workload, &interfaces, lifecycle.takes_secrets)?;
         let workload_id: Arc<str> = Arc::from(workload.id());
         // Record the workload and read the current sender (as an incarnation
         // handle) under one `bound` lock: the supervisor swaps incarnations
@@ -897,7 +897,7 @@ impl HostPlugin for ComponentHostPlugin {
             &self.state,
             lifecycle,
             &lifecycle.bind,
-            info,
+            info.relocate(),
             &workload_id,
         )
         .await
@@ -927,7 +927,7 @@ impl HostPlugin for ComponentHostPlugin {
                 Ok(Err(msg)) => anyhow::anyhow!(
                     "host component plugin '{}' rejected workload '{workload_id}': {}",
                     self.id,
-                    without_secrets(msg, &interfaces)
+                    msg
                 ),
                 Err(e) => anyhow::Error::from(e).context(format!(
                     "host component plugin '{}' returned a malformed on-workload-bind reply",

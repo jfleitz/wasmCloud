@@ -19,6 +19,9 @@ world kv-plugin {
     // Host cancel import: lets the plugin cancel one of its own in-flight
     // invocations by the host-minted job id, exercised by `begin`/`cancel-job`.
     import wasmcloud:host/cancel@0.1.5;
+    // Reveals the `wasmcloud:secrets` handles a bind hands over for keys
+    // filled from a plugin-backed secret.
+    import wasmcloud:secrets/reveal@2.1.0;
     // Self-import: the plugin depends on its own capability so `recurse` can
     // re-enter across the store boundary. The host wires this back to the
     // plugin itself.

@@ -106,7 +106,8 @@ pub struct LifecycleReplay {
     pub func: Arc<str>,
     /// The workload the bind concerns (its id, with no component id).
     pub caller: WorkloadCaller,
-    /// The `workload-info` argument (handle-free).
+    /// The `workload-info` argument; each secret in it becomes a fresh
+    /// `wasmcloud:secrets` handle in the incarnation it is replayed into.
     pub args: Vec<Relocated>,
     /// The bind function's result types.
     pub result_tys: Arc<[Type]>,

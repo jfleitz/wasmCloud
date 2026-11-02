@@ -268,6 +268,14 @@ impl SecretValue {
             SecretBytes::Bytes(bytes) => std::str::from_utf8(bytes).ok(),
         }
     }
+
+    /// The value as text, or as bytes when it is not UTF-8. Never log it.
+    pub(crate) fn expose_bytes(&self) -> Result<&str, &[u8]> {
+        match &self.0 {
+            SecretBytes::Text(text) => Ok(text),
+            SecretBytes::Bytes(bytes) => std::str::from_utf8(bytes).map_err(|_| bytes.as_slice()),
+        }
+    }
 }
 
 impl Drop for SecretValue {

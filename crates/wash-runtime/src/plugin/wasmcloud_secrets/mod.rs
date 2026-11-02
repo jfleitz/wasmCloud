@@ -68,6 +68,24 @@ pub struct SecretState {
     value: SecretValue,
 }
 
+/// A `wasmcloud:secrets` `secret` handle holding `value`, built in the store
+/// the factory runs in: how the host hands a secret to a plugin's guest, which
+/// reads it with `reveal`.
+pub(crate) fn secret_handle(
+    value: crate::plugin::SecretValue,
+) -> crate::engine::store::relocate::ValFactory {
+    Box::new(move |mut store| {
+        let value = match value.expose_bytes() {
+            Ok(text) => SecretValue::String(text.to_string()),
+            Err(bytes) => SecretValue::Bytes(bytes.to_vec()),
+        };
+        let handle = store.data_mut().table.push(SecretState { value })?;
+        Ok(wasmtime::component::Val::Resource(
+            handle.try_into_resource_any(store)?,
+        ))
+    })
+}
+
 impl Drop for SecretState {
     /// Each `get` resolves a fresh copy of the value into a new `SecretState`;
     /// scrub it when the resource is dropped so a revealed secret doesn't
