@@ -2399,11 +2399,14 @@ mod tests {
             bind: Some("192.0.2.10".parse().unwrap()),
         }]);
 
+        // kv-plugin's lifecycle export takes `wasmcloud:secrets` handles.
+        let secrets: Arc<dyn HostPlugin> =
+            Arc::new(crate::plugin::wasmcloud_secrets::WasmcloudSecrets::new());
         let plugin = load_component_plugin(
             &spec,
             &engine,
             crate::oci::OciConfig::default(),
-            &HashMap::new(),
+            &HashMap::from([(secrets.id(), secrets)]),
             None,
             Some(host_policy),
         )
