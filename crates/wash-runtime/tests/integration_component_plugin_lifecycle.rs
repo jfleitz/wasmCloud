@@ -34,6 +34,7 @@ use wash_runtime::engine::workload::{UnresolvedWorkload, WorkloadComponent};
 use wash_runtime::host::http::{DevRouter, DynamicRouter, Ingress};
 use wash_runtime::host::{HostApi, HostBuilder};
 use wash_runtime::plugin::component_host::ComponentHostPlugin;
+use wash_runtime::plugin::wasmcloud_secrets::WasmcloudSecrets;
 use wash_runtime::plugin::{HostPlugin, WitInterfaces};
 use wash_runtime::types::{
     LocalResources, WorkloadState, WorkloadStatusRequest, WorkloadStopRequest,
@@ -52,6 +53,13 @@ const KV_PLUGIN_SERVICE_WASM: &[u8] = include_bytes!("wasm/kv_plugin_service.was
 const BRIDGE_BACKEND_WASM: &[u8] = include_bytes!("wasm/bridge_backend.wasm");
 const BADLIFECYCLE_WASM: &[u8] = include_bytes!("wasm/badlifecycle.wasm");
 const CONFIG_CALLEE_WASM: &[u8] = include_bytes!("wasm/config_callee.wasm");
+
+/// The natives a `kv-plugin` built here links: its lifecycle export takes
+/// `wasmcloud:secrets` handles.
+fn secrets_native() -> HashMap<&'static str, Arc<dyn HostPlugin>> {
+    let secrets: Arc<dyn HostPlugin> = Arc::new(WasmcloudSecrets::new());
+    HashMap::from([(secrets.id(), secrets)])
+}
 const PLUGIN_ID: &str = "acme-kv-plugin";
 
 /// Compilation-cache key for the one component every workload in this file
@@ -711,6 +719,7 @@ async fn test_reserved_lifecycle_export_not_workload_matchable() -> Result<()> {
     let plugin = ComponentHostPlugin::builder()
         .id(PLUGIN_ID)
         .wasm(KV_PLUGIN_WASM)
+        .native_plugins(secrets_native())
         .engine(engine)
         .build()
         .await?;
@@ -766,6 +775,7 @@ async fn test_lifecycle_hooks_driven_directly() -> Result<()> {
     let plugin = ComponentHostPlugin::builder()
         .id(PLUGIN_ID)
         .wasm(KV_PLUGIN_WASM)
+        .native_plugins(secrets_native())
         .engine(engine)
         .build()
         .await?;
@@ -821,6 +831,7 @@ async fn test_lifecycle_bind_fails_when_plugin_not_running() -> Result<()> {
     let plugin = ComponentHostPlugin::builder()
         .id(PLUGIN_ID)
         .wasm(KV_PLUGIN_WASM)
+        .native_plugins(secrets_native())
         .engine(engine)
         .build()
         .await?;
@@ -870,6 +881,7 @@ async fn start_host_keeping_plugin_router(
         ComponentHostPlugin::builder()
             .id(PLUGIN_ID)
             .wasm(KV_PLUGIN_WASM)
+            .native_plugins(secrets_native())
             .engine(engine.clone())
             .build()
             .await?,
@@ -896,6 +908,7 @@ async fn start_host_with_lifecycle_timeout(
     let plugin = ComponentHostPlugin::builder()
         .id(PLUGIN_ID)
         .wasm(KV_PLUGIN_WASM)
+        .native_plugins(secrets_native())
         .engine(engine.clone())
         .build()
         .await?
@@ -1130,6 +1143,7 @@ async fn test_lifecycle_bind_delivers_only_this_plugins_entries() -> Result<()> 
         ComponentHostPlugin::builder()
             .id(PLUGIN_ID)
             .wasm(KV_PLUGIN_WASM)
+            .native_plugins(secrets_native())
             .engine(engine.clone())
             .build()
             .await?,

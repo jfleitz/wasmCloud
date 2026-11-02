@@ -279,7 +279,10 @@ impl HostPlugin for WasmcloudSecrets {
         item: &mut WorkloadItem<'a>,
         interfaces: WitInterfaces<'_>,
     ) -> anyhow::Result<()> {
-        let has_dynamic = interfaces.contains("wasmcloud", "secrets", &["store", "reveal"]);
+        // `store` alone counts: a host component plugin imports it for the
+        // `secret` type its lifecycle export hands over, whether or not it
+        // reveals one.
+        let has_dynamic = interfaces.contains("wasmcloud", "secrets", &["store"]);
 
         // Every labeled `wasmcloud:secrets/secret` import: label -> the value
         // at that same key in the label's own resolved config, if present.
